@@ -19,8 +19,9 @@ def calculate_carry_trade_table(ticker, inicio_price, finish_price, cotizacion_d
                               banda_superior_inicio, banda_superior_finish, 
                               banda_inferior_inicio, banda_inferior_finish):
     
-    # Calcular rendimiento del bono
-    rendimiento_bono = (finish_price / inicio_price - 1) * 100
+    # Calcular rendimiento del bono como ratio
+    rendimiento_bono_ratio = finish_price / inicio_price
+    rendimiento_bono_pct = (rendimiento_bono_ratio - 1) * 100
     
     # Crear tabla de venta USD inicio vs compra USD finish
     venta_usd_inicio_values = [banda_inferior_inicio, 
@@ -42,15 +43,16 @@ def calculate_carry_trade_table(ticker, inicio_price, finish_price, cotizacion_d
     for venta in venta_usd_inicio_values:
         row = []
         for compra in compra_usd_finish_values:
-            # Paso 1: Calcular rendimiento cambiario (vender USD al precio inicial y recomprar al precio final)
-            # Si vendo USD a un precio más alto y recompro a un precio más bajo, tengo ganancia
-            return_cambiario = ((venta / compra) - 1) * 100
+            # Aplicar la fórmula correcta del carry trade:
+            # Rendimiento = (E₁ × V) ÷ (P × E₂) - 1
+            # Donde:
+            # E₁ = Tipo de cambio inicial (venta)
+            # P = Precio del bono inicial (inicio_price)
+            # V = Valor del bono al vencimiento (finish_price)
+            # E₂ = Tipo de cambio final (compra)
             
-            # Paso 2: Sumar el rendimiento del bono
-            # El rendimiento total es la suma de ambos componentes
-            return_total = round(return_cambiario + rendimiento_bono, 2)
-            
-            row.append(return_total)
+            return_total = ((venta * finish_price) / (inicio_price * compra) - 1) * 100
+            row.append(round(return_total, 2))
         results.append(row)
     
     # Crear DataFrame con los resultados
@@ -61,7 +63,7 @@ def calculate_carry_trade_table(ticker, inicio_price, finish_price, cotizacion_d
     # Renombrar índice
     df.index.name = "VENTA USD INICIO"
     
-    return df, venta_usd_inicio_values, compra_usd_finish_values, rendimiento_bono
+    return df, venta_usd_inicio_values, compra_usd_finish_values, rendimiento_bono_pct
 
 # Función para aplicar formato de color a la tabla
 def color_table(val):
@@ -214,28 +216,14 @@ st.markdown("""
 3. Los colores indican la rentabilidad: verde = positiva, rojo = negativa
 4. Puede comparar dos instrumentos diferentes utilizando las pestañas
 
-### Cálculo del Carry Trade:
-La estrategia de carry trade implementada tiene dos componentes:
 
-1. **Rendimiento del bono**: (precio_finish / precio_inicio - 1) * 100
-   - Este es el rendimiento por mantener el bono desde su precio inicial hasta el precio final
+### Interpretación del flujo:
+1. Vendo mis dólares al tipo de cambio inicial
+2. Con ese dinero compro bonos al precio inicial
+3. Al vencimiento, los bonos pagan a precio final
+4. Con ese pago, recompro dólares al tipo de cambio final
+5. La diferencia porcentual entre mis dólares iniciales y finales es el rendimiento total
 
-2. **Rendimiento cambiario**: ((venta_usd_inicio / compra_usd_finish) - 1) * 100
-   - Este es el rendimiento por vender USD al inicio (a un precio mayor) y recomprarlos al final (a un precio menor)
 
-3. **Retorno total**: Rendimiento del bono + Rendimiento cambiario
-   - La tabla muestra este valor total para cada combinación de precios
-
-### Ejemplo práctico:
-- Vendo USD a $1400 (tipo de cambio inicial)
-- Compro un bono a $135 que al vencimiento vale $158 (rendimiento del 17%)
-- Recompro USD a $950 (tipo de cambio final)
-- Ganancia cambiaria: ((1400/950) - 1) * 100 = 47.37%
-- Ganancia total: 47.37% + 17% = 64.37%
-
-### Notas:
-- La tabla muestra una matriz de escenarios posibles basados en los precios de entrada
-- Los valores de VENTA USD INICIO están en el eje vertical (filas)
-- Los valores de COMPRA USD FINISH están en el eje horizontal (columnas)
-- Los porcentajes indican el rendimiento total del carry trade para cada combinación
-""")
+Descargo de responsabilidad: este no es un consejo financiero y realiza su propia investigación. Todo lo dicho es desde mi punto de vista y para fines de entretenimiento.
+Disclaimer - This is not financial advice and do your own research. Everything said is from my point of view and for entertainment purposes.
