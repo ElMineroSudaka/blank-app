@@ -19,6 +19,9 @@ def calculate_carry_trade_table(ticker, inicio_price, finish_price, cotizacion_d
                               banda_superior_inicio, banda_superior_finish, 
                               banda_inferior_inicio, banda_inferior_finish):
     
+    # Calcular rendimiento del bono
+    rendimiento_bono = (finish_price / inicio_price - 1) * 100
+    
     # Crear tabla de venta USD inicio vs compra USD finish
     venta_usd_inicio_values = [banda_inferior_inicio, 
                              round(banda_inferior_inicio + (banda_superior_inicio - banda_inferior_inicio) * 0.2, 2),
@@ -39,9 +42,10 @@ def calculate_carry_trade_table(ticker, inicio_price, finish_price, cotizacion_d
     for venta in venta_usd_inicio_values:
         row = []
         for compra in compra_usd_finish_values:
-            # Calcular porcentaje de retorno
-            return_pct = round(((venta / compra) - 1) * 100, 2)
-            row.append(return_pct)
+            # Calcular porcentaje de retorno (diferencia cambiaria + rendimiento del bono)
+            return_cambiario = ((venta / compra) - 1) * 100
+            return_total = round(return_cambiario + rendimiento_bono, 2)
+            row.append(return_total)
         results.append(row)
     
     # Crear DataFrame con los resultados
@@ -52,7 +56,7 @@ def calculate_carry_trade_table(ticker, inicio_price, finish_price, cotizacion_d
     # Renombrar índice
     df.index.name = "VENTA USD INICIO"
     
-    return df, venta_usd_inicio_values, compra_usd_finish_values
+    return df, venta_usd_inicio_values, compra_usd_finish_values, rendimiento_bono
 
 # Función para aplicar formato de color a la tabla
 def color_table(val):
@@ -86,6 +90,10 @@ with instrument_tab1:
                                       datetime.date.today(), key="cotizacion_date1")
         expiry_date1 = st.date_input("Fecha de Vencimiento", 
                                   datetime.date.today() + datetime.timedelta(days=60), key="expiry_date1")
+        
+        # Cálculo de días entre fechas
+        dias_plazo1 = (expiry_date1 - cotizacion_date1).days
+        st.write(f"Plazo: {dias_plazo1} días")
     
     with col2:
         st.subheader("Bandas")
@@ -96,7 +104,7 @@ with instrument_tab1:
         banda_inferior_finish1 = st.number_input("Banda Inferior Finish", value=944.67, key="bi_finish1")
     
     # Calcular tabla de resultados
-    results_df1, venta_values1, compra_values1 = calculate_carry_trade_table(
+    results_df1, venta_values1, compra_values1, rendimiento_bono1 = calculate_carry_trade_table(
         ticker1, inicio_price1, finish_price1, cotizacion_date1, expiry_date1,
         banda_superior_inicio1, banda_superior_finish1, 
         banda_inferior_inicio1, banda_inferior_finish1
@@ -104,6 +112,7 @@ with instrument_tab1:
     
     # Mostrar tabla con formato
     st.subheader(f"Escenarios de Carry Trade para {ticker1}")
+    st.write(f"Rendimiento del bono: {rendimiento_bono1:.2f}%")
     st.dataframe(results_df1.style.applymap(color_table), height=300)
     
     # Mostrar datos adicionales
@@ -142,6 +151,10 @@ with instrument_tab2:
                                       datetime.date.today(), key="cotizacion_date2")
         expiry_date2 = st.date_input("Fecha de Vencimiento", 
                                   datetime.date.today() + datetime.timedelta(days=180), key="expiry_date2")
+        
+        # Cálculo de días entre fechas
+        dias_plazo2 = (expiry_date2 - cotizacion_date2).days
+        st.write(f"Plazo: {dias_plazo2} días")
     
     with col2:
         st.subheader("Bandas")
@@ -152,7 +165,7 @@ with instrument_tab2:
         banda_inferior_finish2 = st.number_input("Banda Inferior Finish", value=789.67, key="bi_finish2")
     
     # Calcular tabla de resultados
-    results_df2, venta_values2, compra_values2 = calculate_carry_trade_table(
+    results_df2, venta_values2, compra_values2, rendimiento_bono2 = calculate_carry_trade_table(
         ticker2, inicio_price2, finish_price2, cotizacion_date2, expiry_date2,
         banda_superior_inicio2, banda_superior_finish2, 
         banda_inferior_inicio2, banda_inferior_finish2
@@ -160,6 +173,7 @@ with instrument_tab2:
     
     # Mostrar tabla con formato
     st.subheader(f"Escenarios de Carry Trade para {ticker2}")
+    st.write(f"Rendimiento del bono: {rendimiento_bono2:.2f}%")
     st.dataframe(results_df2.style.applymap(color_table), height=300)
     
     # Mostrar datos adicionales
@@ -193,9 +207,15 @@ st.markdown("""
 3. Los colores indican la rentabilidad: verde = positiva, rojo = negativa
 4. Puede comparar dos instrumentos diferentes utilizando las pestañas
 
+### Cálculo del Carry Trade:
+La fórmula utilizada combina dos componentes:
+- **Rendimiento del bono**: (precio_finish / precio_inicio - 1) * 100
+- **Rendimiento cambiario**: ((venta_usd_inicio / compra_usd_finish) - 1) * 100
+- **Retorno total**: Rendimiento del bono + Rendimiento cambiario
+
 ### Notas:
 - La tabla muestra una matriz de escenarios posibles basados en los precios de entrada
 - Los valores de VENTA USD INICIO están en el eje vertical (filas)
 - Los valores de COMPRA USD FINISH están en el eje horizontal (columnas)
-- Los porcentajes indican el rendimiento del carry trade para cada combinación
+- Los porcentajes indican el rendimiento total del carry trade para cada combinación
 """)
