@@ -100,15 +100,24 @@ with instrument_tab1:
         
         # Cálculo de días entre fechas
         dias_plazo1 = (expiry_date1 - cotizacion_date1).days
-        st.write(f"Plazo: {dias_plazo1} días")
+        meses_plazo1 = dias_plazo1 / 30  # Aproximación a meses
+        st.write(f"Plazo: {dias_plazo1} días (aproximadamente {meses_plazo1:.1f} meses)")
     
     with col2:
         st.subheader("Bandas")
         banda_superior_inicio1 = st.number_input("Banda Superior Inicio", value=1400.00, key="bs_inicio1")
-        banda_superior_finish1 = st.number_input("Banda Superior Finish", value=1477.47, key="bs_finish1")
+        
+        # Calcular automáticamente la banda superior finish (crecimiento de 1% mensual)
+        tasa_crecimiento1 = (1 + 0.01) ** meses_plazo1
+        banda_superior_finish1 = round(banda_superior_inicio1 * tasa_crecimiento1, 2)
+        st.write(f"Banda Superior Finish: ${banda_superior_finish1:.2f} (calculada con 1% mensual)")
         
         banda_inferior_inicio1 = st.number_input("Banda Inferior Inicio", value=1000.00, key="bi_inicio1")
-        banda_inferior_finish1 = st.number_input("Banda Inferior Finish", value=944.67, key="bi_finish1")
+        
+        # Calcular automáticamente la banda inferior finish (decrecimiento de 1% mensual)
+        tasa_decrecimiento1 = (1 - 0.01) ** meses_plazo1
+        banda_inferior_finish1 = round(banda_inferior_inicio1 * tasa_decrecimiento1, 2)
+        st.write(f"Banda Inferior Finish: ${banda_inferior_finish1:.2f} (calculada con -1% mensual)")
     
     # Calcular tabla de resultados
     results_df1, venta_values1, compra_values1, rendimiento_bono1 = calculate_carry_trade_table(
@@ -162,15 +171,24 @@ with instrument_tab2:
         
         # Cálculo de días entre fechas
         dias_plazo2 = (expiry_date2 - cotizacion_date2).days
-        st.write(f"Plazo: {dias_plazo2} días")
+        meses_plazo2 = dias_plazo2 / 30  # Aproximación a meses
+        st.write(f"Plazo: {dias_plazo2} días (aproximadamente {meses_plazo2:.1f} meses)")
     
     with col2:
         st.subheader("Bandas")
         banda_superior_inicio2 = st.number_input("Banda Superior Inicio", value=1400.00, key="bs_inicio2")
-        banda_superior_finish2 = st.number_input("Banda Superior Finish", value=1694.47, key="bs_finish2")
+        
+        # Calcular automáticamente la banda superior finish (crecimiento de 1% mensual)
+        tasa_crecimiento2 = (1 + 0.01) ** meses_plazo2
+        banda_superior_finish2 = round(banda_superior_inicio2 * tasa_crecimiento2, 2)
+        st.write(f"Banda Superior Finish: ${banda_superior_finish2:.2f} (calculada con 1% mensual)")
         
         banda_inferior_inicio2 = st.number_input("Banda Inferior Inicio", value=1000.00, key="bi_inicio2")
-        banda_inferior_finish2 = st.number_input("Banda Inferior Finish", value=789.67, key="bi_finish2")
+        
+        # Calcular automáticamente la banda inferior finish (decrecimiento de 1% mensual)
+        tasa_decrecimiento2 = (1 - 0.01) ** meses_plazo2
+        banda_inferior_finish2 = round(banda_inferior_inicio2 * tasa_decrecimiento2, 2)
+        st.write(f"Banda Inferior Finish: ${banda_inferior_finish2:.2f} (calculada con -1% mensual)")
     
     # Calcular tabla de resultados
     results_df2, venta_values2, compra_values2, rendimiento_bono2 = calculate_carry_trade_table(
@@ -216,6 +234,10 @@ st.markdown("""
 3. Los colores indican la rentabilidad: verde = positiva, rojo = negativa
 4. Puede comparar dos instrumentos diferentes utilizando las pestañas
 
+### Cálculo de las Bandas:
+- **Banda Superior Finish**: Se calcula automáticamente con un crecimiento del 1% mensual respecto a la Banda Superior Inicio
+- **Banda Inferior Finish**: Se calcula automáticamente con un decrecimiento del 1% mensual respecto a la Banda Inferior Inicio
+- El cálculo se basa en el plazo entre la fecha de cotización y la fecha de vencimiento
 
 ### Interpretación del flujo:
 1. Vendo mis dólares al tipo de cambio inicial
@@ -223,8 +245,4 @@ st.markdown("""
 3. Al vencimiento, los bonos pagan a precio final
 4. Con ese pago, recompro dólares al tipo de cambio final
 5. La diferencia porcentual entre mis dólares iniciales y finales es el rendimiento total
-
-### Notas:
-Descargo de responsabilidad: este no es un consejo financiero y realiza su propia investigación. Todo lo dicho es desde mi punto de vista y para fines de entretenimiento.
-Disclaimer - This is not financial advice and do your own research. Everything said is from my point of view and for entertainment purposes.
 """)
