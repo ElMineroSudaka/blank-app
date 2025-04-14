@@ -42,9 +42,14 @@ def calculate_carry_trade_table(ticker, inicio_price, finish_price, cotizacion_d
     for venta in venta_usd_inicio_values:
         row = []
         for compra in compra_usd_finish_values:
-            # Calcular porcentaje de retorno (diferencia cambiaria + rendimiento del bono)
+            # Paso 1: Calcular rendimiento cambiario (vender USD al precio inicial y recomprar al precio final)
+            # Si vendo USD a un precio más alto y recompro a un precio más bajo, tengo ganancia
             return_cambiario = ((venta / compra) - 1) * 100
+            
+            # Paso 2: Sumar el rendimiento del bono
+            # El rendimiento total es la suma de ambos componentes
             return_total = round(return_cambiario + rendimiento_bono, 2)
+            
             row.append(return_total)
         results.append(row)
     
@@ -112,7 +117,8 @@ with instrument_tab1:
     
     # Mostrar tabla con formato
     st.subheader(f"Escenarios de Carry Trade para {ticker1}")
-    st.write(f"Rendimiento del bono: {rendimiento_bono1:.2f}%")
+    st.write(f"Rendimiento del bono: {rendimiento_bono1:.2f}% (De {inicio_price1} a {finish_price1})")
+    st.write("Los valores en la tabla representan el rendimiento total: ganancia cambiaria + rendimiento del bono")
     st.dataframe(results_df1.style.applymap(color_table), height=300)
     
     # Mostrar datos adicionales
@@ -173,7 +179,8 @@ with instrument_tab2:
     
     # Mostrar tabla con formato
     st.subheader(f"Escenarios de Carry Trade para {ticker2}")
-    st.write(f"Rendimiento del bono: {rendimiento_bono2:.2f}%")
+    st.write(f"Rendimiento del bono: {rendimiento_bono2:.2f}% (De {inicio_price2} a {finish_price2})")
+    st.write("Los valores en la tabla representan el rendimiento total: ganancia cambiaria + rendimiento del bono")
     st.dataframe(results_df2.style.applymap(color_table), height=300)
     
     # Mostrar datos adicionales
@@ -208,10 +215,23 @@ st.markdown("""
 4. Puede comparar dos instrumentos diferentes utilizando las pestañas
 
 ### Cálculo del Carry Trade:
-La fórmula utilizada combina dos componentes:
-- **Rendimiento del bono**: (precio_finish / precio_inicio - 1) * 100
-- **Rendimiento cambiario**: ((venta_usd_inicio / compra_usd_finish) - 1) * 100
-- **Retorno total**: Rendimiento del bono + Rendimiento cambiario
+La estrategia de carry trade implementada tiene dos componentes:
+
+1. **Rendimiento del bono**: (precio_finish / precio_inicio - 1) * 100
+   - Este es el rendimiento por mantener el bono desde su precio inicial hasta el precio final
+
+2. **Rendimiento cambiario**: ((venta_usd_inicio / compra_usd_finish) - 1) * 100
+   - Este es el rendimiento por vender USD al inicio (a un precio mayor) y recomprarlos al final (a un precio menor)
+
+3. **Retorno total**: Rendimiento del bono + Rendimiento cambiario
+   - La tabla muestra este valor total para cada combinación de precios
+
+### Ejemplo práctico:
+- Vendo USD a $1400 (tipo de cambio inicial)
+- Compro un bono a $135 que al vencimiento vale $158 (rendimiento del 17%)
+- Recompro USD a $950 (tipo de cambio final)
+- Ganancia cambiaria: ((1400/950) - 1) * 100 = 47.37%
+- Ganancia total: 47.37% + 17% = 64.37%
 
 ### Notas:
 - La tabla muestra una matriz de escenarios posibles basados en los precios de entrada
