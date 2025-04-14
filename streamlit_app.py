@@ -224,6 +224,7 @@ st.markdown("""
 4. Con ese pago, recompro dólares al tipo de cambio final
 5. La diferencia porcentual entre mis dólares iniciales y finales es el rendimiento total
 
-
+### Notas:
 Descargo de responsabilidad: este no es un consejo financiero y realiza su propia investigación. Todo lo dicho es desde mi punto de vista y para fines de entretenimiento.
 Disclaimer - This is not financial advice and do your own research. Everything said is from my point of view and for entertainment purposes.
+""")
