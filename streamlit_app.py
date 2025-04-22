@@ -110,7 +110,7 @@ if st.button("Calcular"):
     # 6. Tabla
     table = carry.reset_index()[['symbol','expiration','BE']].copy()
     table.columns = ['Activo','Vencimiento','Break-even (ARS/USD)']
-    table['Días restantes'] = (table['Vencimiento'] - date.today()).dt.days
+    table['Días restantes'] = table['Vencimiento'].apply(lambda d: (d - date.today()).days)
     st.dataframe(table)
 
     st.markdown(
@@ -122,4 +122,3 @@ if st.button("Calcular"):
         - *Días restantes*: Días hasta el vencimiento.
         """
     )
-
