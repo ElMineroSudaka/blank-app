@@ -1,9 +1,16 @@
 import streamlit as st
+
+# Verificar matplotlib
+try:
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+except ImportError:
+    st.error("El módulo matplotlib no está instalado. Por favor, agrega `matplotlib` a tu entorno (pip install matplotlib) y vuelve a intentar.")
+    st.stop()
+
 import pandas as pd
 import requests
 from datetime import date, timedelta
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 
 st.set_page_config(page_title="Carry Trade USD/ARS", layout="wide")
 st.title("Simulación USD/ARS: Breakevens y Bandas de Crawling Peg")
@@ -15,6 +22,7 @@ st.markdown(
 # Parámetros de usuario
 mep_input = st.number_input("MEP actual (ARS/USD)", min_value=0.0, value=1250.0, step=1.0)
 use_manual = st.checkbox("Usar valor MEP manual", value=False)
+
 if st.button("Calcular"):
     # 1. Definición de tickers y payoff
     tickers = {
@@ -114,3 +122,4 @@ if st.button("Calcular"):
         - *Días restantes*: Días hasta el vencimiento.
         """
     )
+
