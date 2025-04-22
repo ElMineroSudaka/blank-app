@@ -90,11 +90,18 @@ if st.button("Calcular"):
     for s in ['top','right']: ax.spines[s].set_visible(False)
     ax.spines['bottom'].set_color('white'); ax.spines['left'].set_color('white')
 
+    # Bandas
     ax.plot([start_band] + dates_be, upper_band, color='red', linestyle='--', lw=2, label='Banda sup')
     ax.plot([start_band] + dates_be, lower_band, color='green', linestyle='--', lw=2, label='Banda inf')
     ax.fill_between([start_band] + dates_be, lower_band, upper_band, color='gray', alpha=0.15)
+    # Breakevens
     ax.plot(dates_be, prices_be, color='cyan', lw=3, marker='o', label='Breakevens')
 
+    # Nombres de instrumentos
+    for x, y, sym in zip(dates_be, prices_be, carry.index):
+        ax.text(x, y + 5, sym, color='white', ha='center', va='bottom', fontsize=12)
+
+    # Marcar elecciones
     elec = date(2025, 10, 26)
     ax.axvline(elec, color='yellow', lw=2)
     ax.text(elec, ax.get_ylim()[1]*0.95, 'Elecciones 26/10/2025', color='yellow', rotation=90,
@@ -104,7 +111,7 @@ if st.button("Calcular"):
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
     plt.xticks(rotation=45, color='white')
     plt.yticks(color='white')
-    ax.legend(facecolor='white', framealpha=0.3)
+    ax.legend(facecolor='black', framealpha=0.3)
     st.pyplot(fig)
 
     # 6. Tabla
