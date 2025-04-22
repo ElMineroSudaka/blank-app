@@ -99,7 +99,7 @@ if st.button("Calcular"):
 
     # Nombres de instrumentos
     for x, y, sym in zip(dates_be, prices_be, carry.index):
-        ax.text(x, y - 5, sym, color='white', ha='center', va='bottom', fontsize=8)
+        ax.text(x, y - 30, sym, color='white', ha='center', va='bottom', fontsize=8)
 
     # Marcar elecciones
     elec = date(2025, 10, 26)
