@@ -1,2 +1,1 @@
-pip install streamlit pandas requests matplotlib
 streamlit
