@@ -1,248 +1,116 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import datetime
+import requests
+from datetime import date, timedelta
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 
-st.set_page_config(page_title="Calculadora de Carry Trade", layout="wide")
+st.set_page_config(page_title="Carry Trade USD/ARS", layout="wide")
+st.title("Simulación USD/ARS: Breakevens y Bandas de Crawling Peg")
+st.markdown(
+    "Visualiza los breakevens de carry trades contra un corredor dinámico de crawling peg, "
+    "y marca las elecciones argentinas (26/10/2025)."
+)
 
-st.title("Calculadora de Escenarios de Carry Trade")
-st.markdown("Esta aplicación permite calcular diferentes escenarios de carry trade basados en el precio inicial, final y bandas superior e inferior.")
+# Parámetros de usuario
+mep_input = st.number_input("MEP actual (ARS/USD)", min_value=0.0, value=1250.0, step=1.0)
+use_manual = st.checkbox("Usar valor MEP manual", value=False)
+if st.button("Calcular"):
+    # 1. Definición de tickers y payoff
+    tickers = {
+        "S16A5": date(2025, 4, 16), "S28A5": date(2025, 4, 28),
+        "S16Y5": date(2025, 5, 16), "S30Y5": date(2025, 5, 30),
+        "S18J5": date(2025, 6, 18), "S30J5": date(2025, 6, 30),
+        "S31L5": date(2025, 7, 31), "S15G5": date(2025, 8, 15),
+        "S29G5": date(2025, 8, 29), "S12S5": date(2025, 9, 12),
+        "S30S5": date(2025, 9, 30), "T17O5": date(2025, 10, 15),
+        "S31O5": date(2025, 10, 31), "S10N5": date(2025, 11, 10),
+        "S28N5": date(2025, 11, 28), "T15D5": date(2025, 12, 15),
+        "T30E6": date(2026, 1, 30), "T13F6": date(2026, 2, 13),
+        "T30J6": date(2026, 6, 30), "T15E7": date(2027, 1, 15),
+        "TTM26": date(2026, 3, 16), "TTJ26": date(2026, 6, 30),
+        "TTS26": date(2026, 9, 15), "TTD26": date(2026, 12, 15)
+    }
+    payoff = {
+        "S16A5": 131.211, "S28A5": 130.813, "S16Y5": 136.861, "S30Y5": 136.331,
+        "S18J5": 147.695, "S30J5": 146.607, "S31L5": 147.74,  "S15G5": 146.794,
+        "S29G5": 157.7,   "S12S5": 158.977, "S30S5": 159.734, "T17O5": 158.872,
+        "S31O5": 132.821, "S10N5": 122.254, "S28N5": 123.561, "T15D5": 170.838,
+        "T30E6": 142.222, "T13F6": 144.966, "T30J6": 144.896, "T15E7": 160.777,
+        "TTM26": 135.238, "TTJ26": 144.629, "TTS26": 152.096, "TTD26": 161.144
+    }
 
-# Sidebar para inputs
-st.sidebar.header("Datos de Entrada")
-
-# Crear dos pestañas para diferentes instrumentos
-instrument_tab1, instrument_tab2 = st.tabs(["Instrumento 1", "Instrumento 2"])
-
-# Función para calcular la tabla de resultados
-def calculate_carry_trade_table(ticker, inicio_price, finish_price, cotizacion_date, expiry_date, 
-                              banda_superior_inicio, banda_superior_finish, 
-                              banda_inferior_inicio, banda_inferior_finish):
-    
-    # Calcular rendimiento del bono como ratio
-    rendimiento_bono_ratio = finish_price / inicio_price
-    rendimiento_bono_pct = (rendimiento_bono_ratio - 1) * 100
-    
-    # Crear tabla de venta USD inicio vs compra USD finish
-    venta_usd_inicio_values = [banda_inferior_inicio, 
-                             round(banda_inferior_inicio + (banda_superior_inicio - banda_inferior_inicio) * 0.2, 2),
-                             round(banda_inferior_inicio + (banda_superior_inicio - banda_inferior_inicio) * 0.4, 2),
-                             round(banda_inferior_inicio + (banda_superior_inicio - banda_inferior_inicio) * 0.6, 2),
-                             round(banda_inferior_inicio + (banda_superior_inicio - banda_inferior_inicio) * 0.8, 2),
-                             banda_superior_inicio]
-    
-    compra_usd_finish_values = [banda_inferior_finish, 
-                              round(banda_inferior_finish + (banda_superior_finish - banda_inferior_finish) * 0.2, 2),
-                              round(banda_inferior_finish + (banda_superior_finish - banda_inferior_finish) * 0.4, 2),
-                              round(banda_inferior_finish + (banda_superior_finish - banda_inferior_finish) * 0.6, 2),
-                              round(banda_inferior_finish + (banda_superior_finish - banda_inferior_finish) * 0.8, 2),
-                              banda_superior_finish]
-    
-    # Crear matriz de resultados como DataFrame
-    results = []
-    for venta in venta_usd_inicio_values:
-        row = []
-        for compra in compra_usd_finish_values:
-            # Aplicar la fórmula correcta del carry trade:
-            # Rendimiento = (E₁ × V) ÷ (P × E₂) - 1
-            # Donde:
-            # E₁ = Tipo de cambio inicial (venta)
-            # P = Precio del bono inicial (inicio_price)
-            # V = Valor del bono al vencimiento (finish_price)
-            # E₂ = Tipo de cambio final (compra)
-            
-            return_total = ((venta * finish_price) / (inicio_price * compra) - 1) * 100
-            row.append(round(return_total, 2))
-        results.append(row)
-    
-    # Crear DataFrame con los resultados
-    df = pd.DataFrame(results, 
-                     index=[f"${venta:.2f}" for venta in venta_usd_inicio_values],
-                     columns=[f"${compra:.2f}" for compra in compra_usd_finish_values])
-    
-    # Renombrar índice
-    df.index.name = "VENTA USD INICIO"
-    
-    return df, venta_usd_inicio_values, compra_usd_finish_values, rendimiento_bono_pct
-
-# Función para aplicar formato de color a la tabla
-def color_table(val):
-    if val > 20:
-        color = 'background-color: #2d882d'
-    elif val > 10:
-        color = 'background-color: #55aa55'
-    elif val > 5:
-        color = 'background-color: #88cc88'
-    elif val > 0:
-        color = 'background-color: #aaddaa'
-    elif val > -5:
-        color = 'background-color: #ffcccc'
-    elif val > -10:
-        color = 'background-color: #ff9999'
+    # 2. Obtener MEP
+    if not use_manual:
+        try:
+            mep_data = requests.get('https://data912.com/live/mep', timeout=5).json()
+            mep = pd.DataFrame(mep_data).close.median()
+        except:
+            st.warning("Error al obtener MEP automático, usando valor manual.")
+            mep = mep_input
     else:
-        color = 'background-color: #ff7777'
-    return color
+        mep = mep_input
 
-# Contenido para la pestaña 1
-with instrument_tab1:
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        ticker1 = st.text_input("Ticker", "S30S5", key="ticker1")
-        
-        inicio_price1 = st.number_input("Precio Inicio", value=135.45, key="inicio_price1")
-        finish_price1 = st.number_input("Precio Finish", value=158.98, key="finish_price1")
-        
-        cotizacion_date1 = st.date_input("Fecha de Cotización", 
-                                      datetime.date.today(), key="cotizacion_date1")
-        expiry_date1 = st.date_input("Fecha de Vencimiento", 
-                                  datetime.date.today() + datetime.timedelta(days=60), key="expiry_date1")
-        
-        # Cálculo de días entre fechas
-        dias_plazo1 = (expiry_date1 - cotizacion_date1).days
-        meses_plazo1 = dias_plazo1 / 30  # Aproximación a meses
-        st.write(f"Plazo: {dias_plazo1} días (aproximadamente {meses_plazo1:.1f} meses)")
-    
-    with col2:
-        st.subheader("Bandas")
-        banda_superior_inicio1 = st.number_input("Banda Superior Inicio", value=1400.00, key="bs_inicio1")
-        
-        # Calcular automáticamente la banda superior finish (crecimiento de 1% mensual)
-        tasa_crecimiento1 = (1 + 0.01) ** meses_plazo1
-        banda_superior_finish1 = round(banda_superior_inicio1 * tasa_crecimiento1, 2)
-        st.write(f"Banda Superior Finish: ${banda_superior_finish1:.2f} (calculada con 1% mensual)")
-        
-        banda_inferior_inicio1 = st.number_input("Banda Inferior Inicio", value=1000.00, key="bi_inicio1")
-        
-        # Calcular automáticamente la banda inferior finish (decrecimiento de 1% mensual)
-        tasa_decrecimiento1 = (1 - 0.01) ** meses_plazo1
-        banda_inferior_finish1 = round(banda_inferior_inicio1 * tasa_decrecimiento1, 2)
-        st.write(f"Banda Inferior Finish: ${banda_inferior_finish1:.2f} (calculada con -1% mensual)")
-    
-    # Calcular tabla de resultados
-    results_df1, venta_values1, compra_values1, rendimiento_bono1 = calculate_carry_trade_table(
-        ticker1, inicio_price1, finish_price1, cotizacion_date1, expiry_date1,
-        banda_superior_inicio1, banda_superior_finish1, 
-        banda_inferior_inicio1, banda_inferior_finish1
+    # 3. Descargar precios
+    notes = requests.get('https://data912.com/live/arg_notes').json()
+    bonds = requests.get('https://data912.com/live/arg_bonds').json()
+    df = pd.DataFrame(notes + bonds)
+
+    # 4. Calcular breakevens
+    carry = (
+        df[df.symbol.isin(tickers)]
+          .set_index('symbol')
+          .assign(
+              payoff     = lambda d: d.index.map(payoff),
+              expiration = lambda d: d.index.map(tickers),
+              BE         = lambda d: mep * (d.payoff / d.c)
+          )
+          .sort_values('expiration')
     )
-    
-    # Mostrar tabla con formato
-    st.subheader(f"Escenarios de Carry Trade para {ticker1}")
-    st.write(f"Rendimiento del bono: {rendimiento_bono1:.2f}% (De {inicio_price1} a {finish_price1})")
-    st.write("Los valores en la tabla representan el rendimiento total: ganancia cambiaria + rendimiento del bono")
-    st.dataframe(results_df1.style.applymap(color_table), height=300)
-    
-    # Mostrar datos adicionales
-    data_table1 = pd.DataFrame({
-        "": ["INICIO", "FINISH"],
-        "Valor": [inicio_price1, finish_price1]
-    })
-    
-    banda_table1 = pd.DataFrame({
-        "": ["BANDA SUPERIOR", "BANDA INFERIOR"],
-        "INICIO": [banda_superior_inicio1, banda_inferior_inicio1],
-        "FINISH": [banda_superior_finish1, banda_inferior_finish1]
-    })
-    
-    col3, col4 = st.columns(2)
-    with col3:
-        st.write("Datos de Cotización:")
-        st.write(f"Fecha: {cotizacion_date1.strftime('%d/%m/%Y')}")
-        st.dataframe(data_table1, hide_index=True)
-    
-    with col4:
-        st.write("Bandas:")
-        st.dataframe(banda_table1, hide_index=True)
 
-# Contenido para la pestaña 2
-with instrument_tab2:
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        ticker2 = st.text_input("Ticker", "TTD26", key="ticker2")
-        
-        inicio_price2 = st.number_input("Precio Inicio", value=94.00, key="inicio_price2")
-        finish_price2 = st.number_input("Precio Finish", value=161.14, key="finish_price2")
-        
-        cotizacion_date2 = st.date_input("Fecha de Cotización", 
-                                      datetime.date.today(), key="cotizacion_date2")
-        expiry_date2 = st.date_input("Fecha de Vencimiento", 
-                                  datetime.date.today() + datetime.timedelta(days=180), key="expiry_date2")
-        
-        # Cálculo de días entre fechas
-        dias_plazo2 = (expiry_date2 - cotizacion_date2).days
-        meses_plazo2 = dias_plazo2 / 30  # Aproximación a meses
-        st.write(f"Plazo: {dias_plazo2} días (aproximadamente {meses_plazo2:.1f} meses)")
-    
-    with col2:
-        st.subheader("Bandas")
-        banda_superior_inicio2 = st.number_input("Banda Superior Inicio", value=1400.00, key="bs_inicio2")
-        
-        # Calcular automáticamente la banda superior finish (crecimiento de 1% mensual)
-        tasa_crecimiento2 = (1 + 0.01) ** meses_plazo2
-        banda_superior_finish2 = round(banda_superior_inicio2 * tasa_crecimiento2, 2)
-        st.write(f"Banda Superior Finish: ${banda_superior_finish2:.2f} (calculada con 1% mensual)")
-        
-        banda_inferior_inicio2 = st.number_input("Banda Inferior Inicio", value=1000.00, key="bi_inicio2")
-        
-        # Calcular automáticamente la banda inferior finish (decrecimiento de 1% mensual)
-        tasa_decrecimiento2 = (1 - 0.01) ** meses_plazo2
-        banda_inferior_finish2 = round(banda_inferior_inicio2 * tasa_decrecimiento2, 2)
-        st.write(f"Banda Inferior Finish: ${banda_inferior_finish2:.2f} (calculada con -1% mensual)")
-    
-    # Calcular tabla de resultados
-    results_df2, venta_values2, compra_values2, rendimiento_bono2 = calculate_carry_trade_table(
-        ticker2, inicio_price2, finish_price2, cotizacion_date2, expiry_date2,
-        banda_superior_inicio2, banda_superior_finish2, 
-        banda_inferior_inicio2, banda_inferior_finish2
+    # 5. Gráfico
+    dates_be = carry['expiration'].tolist()
+    prices_be = carry['BE'].tolist()
+    start_band = date(2025, 4, 14)
+    months_off = [(d - start_band).days / 30 for d in [start_band] + dates_be]
+    upper_band = [1400 * (1.01)**m for m in months_off]
+    lower_band = [1000 * (0.99)**m for m in months_off]
+
+    fig, ax = plt.subplots(figsize=(14,7), dpi=150, facecolor='black')
+    ax.set_facecolor('black')
+    ax.grid(color='white', linestyle='--', alpha=0.2)
+    for s in ['top','right']: ax.spines[s].set_visible(False)
+    ax.spines['bottom'].set_color('white'); ax.spines['left'].set_color('white')
+
+    ax.plot([start_band] + dates_be, upper_band, color='red', linestyle='--', lw=2, label='Banda sup')
+    ax.plot([start_band] + dates_be, lower_band, color='green', linestyle='--', lw=2, label='Banda inf')
+    ax.fill_between([start_band] + dates_be, lower_band, upper_band, color='gray', alpha=0.15)
+    ax.plot(dates_be, prices_be, color='cyan', lw=3, marker='o', label='Breakevens')
+
+    elec = date(2025, 10, 26)
+    ax.axvline(elec, color='yellow', lw=2)
+    ax.text(elec, ax.get_ylim()[1]*0.95, 'Elecciones 26/10/2025', color='yellow', rotation=90,
+            va='top', ha='right', fontsize=12)
+
+    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+    plt.xticks(rotation=45, color='white')
+    plt.yticks(color='white')
+    ax.legend(facecolor='black', framealpha=0.3)
+    st.pyplot(fig)
+
+    # 6. Tabla
+    table = carry.reset_index()[['symbol','expiration','BE']].copy()
+    table.columns = ['Activo','Vencimiento','Break-even (ARS/USD)']
+    table['Días restantes'] = (table['Vencimiento'] - date.today()).dt.days
+    st.dataframe(table)
+
+    st.markdown(
+        """
+        **Explicación**:
+        - *Activo*: Ticker del bono o nota.
+        - *Vencimiento*: Fecha de pago del payoff.
+        - *Break-even*: Tipo de cambio necesario para no ganar ni perder en ARS.
+        - *Días restantes*: Días hasta el vencimiento.
+        """
     )
-    
-    # Mostrar tabla con formato
-    st.subheader(f"Escenarios de Carry Trade para {ticker2}")
-    st.write(f"Rendimiento del bono: {rendimiento_bono2:.2f}% (De {inicio_price2} a {finish_price2})")
-    st.write("Los valores en la tabla representan el rendimiento total: ganancia cambiaria + rendimiento del bono")
-    st.dataframe(results_df2.style.applymap(color_table), height=300)
-    
-    # Mostrar datos adicionales
-    data_table2 = pd.DataFrame({
-        "": ["INICIO", "FINISH"],
-        "Valor": [inicio_price2, finish_price2]
-    })
-    
-    banda_table2 = pd.DataFrame({
-        "": ["BANDA SUPERIOR", "BANDA INFERIOR"],
-        "INICIO": [banda_superior_inicio2, banda_inferior_inicio2],
-        "FINISH": [banda_superior_finish2, banda_inferior_finish2]
-    })
-    
-    col3, col4 = st.columns(2)
-    with col3:
-        st.write("Datos de Cotización:")
-        st.write(f"Fecha: {cotizacion_date2.strftime('%d/%m/%Y')}")
-        st.dataframe(data_table2, hide_index=True)
-    
-    with col4:
-        st.write("Bandas:")
-        st.dataframe(banda_table2, hide_index=True)
-
-# Añadir información adicional
-st.markdown("---")
-st.markdown("""
-### Cómo utilizar esta calculadora:
-1. Ingrese los datos del instrumento financiero en los campos correspondientes
-2. La tabla muestra los retornos porcentuales para diferentes escenarios de compra y venta
-3. Los colores indican la rentabilidad: verde = positiva, rojo = negativa
-4. Puede comparar dos instrumentos diferentes utilizando las pestañas
-
-### Cálculo de las Bandas:
-- **Banda Superior Finish**: Se calcula automáticamente con un crecimiento del 1% mensual respecto a la Banda Superior Inicio
-- **Banda Inferior Finish**: Se calcula automáticamente con un decrecimiento del 1% mensual respecto a la Banda Inferior Inicio
-- El cálculo se basa en el plazo entre la fecha de cotización y la fecha de vencimiento
-
-### Interpretación del flujo:
-1. Vendo mis dólares al tipo de cambio inicial
-2. Con ese dinero compro bonos al precio inicial
-3. Al vencimiento, los bonos pagan a precio final
-4. Con ese pago, recompro dólares al tipo de cambio final
-5. La diferencia porcentual entre mis dólares iniciales y finales es el rendimiento total
-""")
