@@ -104,7 +104,7 @@ if st.button("Calcular"):
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
     plt.xticks(rotation=45, color='white')
     plt.yticks(color='white')
-    ax.legend(facecolor='black', framealpha=0.3)
+    ax.legend(facecolor='white', framealpha=0.3)
     st.pyplot(fig)
 
     # 6. Tabla
