@@ -7,6 +7,20 @@ from datetime import date, timedelta
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(page_title="Carry Trade USD/ARS Interactivo", layout="wide")
 
+# --- ESTILOS PERSONALIZADOS (CSS) ---
+# Inyecta CSS para hacer la barra lateral más ancha
+st.markdown(
+    """
+    <style>
+        [data-testid="stSidebar"] {
+            width: 500px !important;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
 # --- DATOS ESTÁTICOS Y CONFIGURACIÓN ---
 # Se definen fuera de las funciones para que no se redeclaren innecesariamente
 TICKERS_DATA = {
@@ -118,7 +132,7 @@ def create_interactive_chart(df_carry, upper_band, lower_band, band_dates):
         yaxis_title='Tipo de Cambio (ARS/USD)',
         xaxis_title='Fecha de Vencimiento',
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        height=600,
+        height=750, # Aumenta la altura del gráfico
         hovermode='x unified'
     )
     return fig
@@ -137,7 +151,7 @@ with st.sidebar:
         disabled=not use_manual_mep
     )
     st.markdown("---")
-    st.info("Las bandas de crawling peg son fijas para esta visualización (Sup: +1% mensual, Inf: -1% mensual).")
+    st.info("Las bandas de crawling peg son fijas (desde 14/04/2025) para esta visualización (Sup: +1% mensual, Inf: -1% mensual).")
 
 
 # --- CUERPO PRINCIPAL DE LA APLICACIÓN ---
@@ -173,9 +187,9 @@ with st.spinner('Cargando datos de mercado y calculando...'):
 
         if not df_carry.empty:
             # 3. Calcular Bandas de Crawling Peg (Valores fijos)
-            start_band = date.today()
-            all_dates = sorted(df_carry['expiration'].dt.date.tolist() + [FECHA_ELECCIONES])
-            band_dates = [start_band] + all_dates
+            start_band = date(2025, 4, 14) # Fecha de inicio solicitada por el usuario
+            all_future_dates = sorted([d for d in df_carry['expiration'].dt.date.tolist() + [FECHA_ELECCIONES] if d >= start_band])
+            band_dates = [start_band] + all_future_dates
             
             months_off = [(d - start_band).days / 30.44 for d in band_dates]
             # Valores fijos para las bandas
