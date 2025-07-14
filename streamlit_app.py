@@ -1,234 +1,209 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import datetime
+import requests
+import plotly.graph_objects as go
+from datetime import date, timedelta
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
-st.set_page_config(
-    page_title="Calculadora de Carry Trade",
-    page_icon="💹",
-    layout="wide"
-)
+st.set_page_config(page_title="Carry Trade USD/ARS Interactivo", layout="wide")
 
-# --- ESTILOS CSS PERSONALIZADOS (OPCIONAL) ---
-# Se inyecta CSS para mejorar la apariencia de las tarjetas de métricas y otros elementos.
-st.markdown("""
-<style>
-    /* Estilo para contenedores de métricas */
-    [data-testid="stMetric"] {
-        background-color: #262730;
-        border: 1px solid #262730;
-        padding: 15px;
-        border-radius: 10px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    }
-    /* Estilo para el valor de la métrica */
-    [data-testid="stMetricValue"] {
-        font-size: 24px;
-        font-weight: 600;
-    }
-    /* Estilo para la etiqueta de la métrica */
-    [data-testid="stMetricLabel"] {
-        font-size: 16px;
-        color: #A0A0A0;
-    }
-    /* Estilo para las pestañas */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 24px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        white-space: pre-wrap;
-        background-color: #1E1E1E;
-        border-radius: 8px 8px 0 0;
-        gap: 1px;
-        padding-top: 10px;
-        padding-bottom: 10px;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #262730;
-    }
-</style>
-""", unsafe_allow_html=True)
+# --- DATOS ESTÁTICOS Y CONFIGURACIÓN ---
+# Se definen fuera de las funciones para que no se redeclaren innecesariamente
+TICKERS_DATA = {
+    "S16A5": {"venc": date(2025, 4, 16), "payoff": 131.211}, "S28A5": {"venc": date(2025, 4, 28), "payoff": 130.813},
+    "S16Y5": {"venc": date(2025, 5, 16), "payoff": 136.861}, "S30Y5": {"venc": date(2025, 5, 30), "payoff": 136.331},
+    "S18J5": {"venc": date(2025, 6, 18), "payoff": 147.695}, "S30J5": {"venc": date(2025, 6, 30), "payoff": 146.607},
+    "S31L5": {"venc": date(2025, 7, 31), "payoff": 147.740}, "S15G5": {"venc": date(2025, 8, 15), "payoff": 146.794},
+    "S29G5": {"venc": date(2025, 8, 29), "payoff": 157.700}, "S12S5": {"venc": date(2025, 9, 12), "payoff": 158.977},
+    "S30S5": {"venc": date(2025, 9, 30), "payoff": 159.734}, "T17O5": {"venc": date(2025, 10, 15), "payoff": 158.872},
+    "S31O5": {"venc": date(2025, 10, 31), "payoff": 132.821}, "S10N5": {"venc": date(2025, 11, 10), "payoff": 122.254},
+    "S28N5": {"venc": date(2025, 11, 28), "payoff": 123.561}, "T15D5": {"venc": date(2025, 12, 15), "payoff": 170.838},
+    "T30E6": {"venc": date(2026, 1, 30), "payoff": 142.222}, "T13F6": {"venc": date(2026, 2, 13), "payoff": 144.966},
+    "T30J6": {"venc": date(2026, 6, 30), "payoff": 144.896}, "T15E7": {"venc": date(2027, 1, 15), "payoff": 160.777},
+    "TTM26": {"venc": date(2026, 3, 16), "payoff": 135.238}, "TTJ26": {"venc": date(2026, 6, 30), "payoff": 144.629},
+    "TTS26": {"venc": date(2026, 9, 15), "payoff": 152.096}, "TTD26": {"venc": date(2026, 12, 15), "payoff": 161.144}
+}
+FECHA_ELECCIONES = date(2025, 10, 26)
 
+# --- CACHING Y CARGA DE DATOS ---
+@st.cache_data(ttl=300) # Cache por 5 minutos para no sobrecargar la API
+def load_data():
+    """Carga los precios de bonos y notas desde la API."""
+    try:
+        notes = requests.get('https://data912.com/live/arg_notes', timeout=10).json()
+        bonds = requests.get('https://data912.com/live/arg_bonds', timeout=10).json()
+        return pd.DataFrame(notes + bonds)
+    except requests.RequestException as e:
+        st.error(f"Error al cargar datos de mercado: {e}")
+        return None
 
-# --- FUNCIONES PRINCIPALES ---
+# --- FUNCIONES DE LA APLICACIÓN ---
+def get_mep_price(use_manual, manual_mep):
+    """Obtiene el precio del MEP, ya sea automático o manual."""
+    if not use_manual:
+        try:
+            mep_data = requests.get('https://data912.com/live/mep', timeout=5).json()
+            return pd.DataFrame(mep_data)['close'].median()
+        except requests.RequestException:
+            st.warning("No se pudo obtener el MEP automático. Usando valor manual.", icon="⚠️")
+            return manual_mep
+    return manual_mep
 
-def calculate_carry_trade_table(banda_superior_inicio, banda_superior_finish,
-                                banda_inferior_inicio, banda_inferior_finish):
-    """
-    Calcula la matriz de escenarios de carry trade.
-    Genera 6 puntos de precio para el inicio y el final, espaciados uniformemente entre las bandas.
-    """
-    # Crear un rango de 6 valores de venta y compra entre las bandas inferior y superior.
-    venta_usd_inicio_values = np.linspace(banda_inferior_inicio, banda_superior_inicio, 6)
-    compra_usd_finish_values = np.linspace(banda_inferior_finish, banda_superior_finish, 6)
+def create_interactive_chart(df_carry, upper_band, lower_band, band_dates):
+    """Crea un gráfico interactivo con Plotly."""
+    fig = go.Figure()
 
-    # Crear la matriz de resultados calculando el retorno para cada par de venta/compra.
-    results_matrix = np.zeros((6, 6))
-    for i, venta in enumerate(venta_usd_inicio_values):
-        for j, compra in enumerate(compra_usd_finish_values):
-            if compra != 0:
-                # Fórmula de retorno: ((Precio Venta / Precio Compra) - 1) * 100
-                return_pct = ((venta / compra) - 1) * 100
-                results_matrix[i, j] = return_pct
-            else:
-                results_matrix[i, j] = np.nan # Evitar división por cero
+    # 1. Banda Superior
+    fig.add_trace(go.Scatter(
+        x=band_dates, y=upper_band,
+        mode='lines',
+        line=dict(color='red', width=2, dash='dash'),
+        name='Banda Superior Crawling Peg'
+    ))
 
-    # Crear un DataFrame de Pandas con los resultados para una mejor visualización.
-    df = pd.DataFrame(
-        results_matrix,
-        index=[f"${v:.2f}" for v in venta_usd_inicio_values],
-        columns=[f"${c:.2f}" for c in compra_usd_finish_values]
+    # 2. Banda Inferior con relleno
+    fig.add_trace(go.Scatter(
+        x=band_dates, y=lower_band,
+        fill='tonexty', # Rellena el área hasta la traza anterior
+        mode='lines',
+        line=dict(color='green', width=2, dash='dash'),
+        fillcolor='rgba(128,128,128,0.2)',
+        name='Banda Inferior Crawling Peg'
+    ))
+
+    # 3. Breakevens de Carry Trade
+    fig.add_trace(go.Scatter(
+        x=df_carry['expiration'],
+        y=df_carry['BE'],
+        mode='lines+markers+text',
+        name='Breakevens Carry Trade',
+        line=dict(color='cyan', width=3),
+        marker=dict(size=8, symbol='circle'),
+        text=df_carry.index,
+        textposition="top center",
+        hoverinfo='text',
+        hovertext=[
+            f"<b>Activo:</b> {row.Index}<br>"
+            f"<b>Vencimiento:</b> {row.expiration:%d-%b-%Y}<br>"
+            f"<b>Breakeven:</b> ${row.BE:,.2f}"
+            for row in df_carry.itertuples()
+        ]
+    ))
+    
+    # 4. Línea vertical para las elecciones
+    fig.add_vline(
+        x=FECHA_ELECCIONES,
+        line_width=2,
+        line_dash="dot",
+        line_color="yellow",
+        annotation_text="Elecciones 26/10",
+        annotation_position="top right",
+        annotation_font_size=12,
+        annotation_font_color="yellow"
     )
-    df.index.name = "VENTA USD INICIO"
-    df.columns.name = "COMPRA USD FINISH"
-    return df
 
-def color_gradient_style(val):
-    """
-    Aplica un degradado de color a las celdas de la tabla basado en el valor del retorno.
-    Verdes para ganancias, Rojos para pérdidas.
-    """
-    if pd.isna(val):
-        return 'background-color: #333333' # Color para valores nulos
-    
-    # Paleta de colores mejorada (de rojo intenso a verde intenso)
-    if val > 15: color = '#1a9850'  # Verde oscuro
-    elif val > 10: color = '#66bd63'
-    elif val > 5: color = '#a6d96a'
-    elif val > 0: color = '#d9ef8b'   # Verde claro
-    elif val == 0: color = '#ffffbf' # Amarillo neutral
-    elif val > -5: color = '#fee08b'  # Naranja claro
-    elif val > -10: color = '#fdae61'
-    elif val > -15: color = '#f46d43'
-    else: color = '#d73027'  # Rojo intenso
-    
-    return f'background-color: {color}; color: {"black" if val > -5 and val < 5 else "white"};'
+    # 5. Estilo y Layout del Gráfico
+    fig.update_layout(
+        template='plotly_dark',
+        title='Simulación Interactiva de Carry Trade: Breakevens vs. Crawling Peg',
+        yaxis_title='Tipo de Cambio (ARS/USD)',
+        xaxis_title='Fecha de Vencimiento',
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        height=600,
+        hovermode='x unified'
+    )
+    return fig
 
-def display_instrument_inputs(suffix, defaults):
-    """
-    Crea los campos de entrada para un instrumento en el panel lateral.
-    """
-    st.subheader(f"Instrumento: {defaults['ticker']}")
+# --- INTERFAZ DE USUARIO (SIDEBAR) ---
+with st.sidebar:
+    st.header("⚙️ Parámetros de Simulación")
+
+    # Parámetros MEP
+    use_manual_mep = st.toggle("Usar valor MEP manual", value=False)
+    manual_mep_input = st.number_input(
+        "Valor MEP Manual (ARS/USD)",
+        min_value=0.0,
+        value=1250.0,
+        step=1.0,
+        disabled=not use_manual_mep
+    )
+
+    # Parámetros de las bandas de Crawling Peg
+    st.markdown("---")
+    st.subheader("Bandas de Crawling Peg")
     
-    # Usar columnas para organizar mejor los inputs
     col1, col2 = st.columns(2)
     with col1:
-        ticker = st.text_input("Ticker", defaults['ticker'], key=f"ticker{suffix}")
-        inicio_price = st.number_input("Precio Inicio", value=defaults['inicio_price'], format="%.2f", key=f"inicio_price{suffix}")
-        banda_superior_inicio = st.number_input("Banda Superior Inicio", value=defaults['bs_inicio'], format="%.2f", key=f"bs_inicio{suffix}")
-        banda_inferior_inicio = st.number_input("Banda Inferior Inicio", value=defaults['bi_inicio'], format="%.2f", key=f"bi_inicio{suffix}")
-
+        st.write("📈 **Banda Superior**")
+        upper_start = st.number_input("Valor Inicial (ARS)", value=1400.0, step=10.0, key="upper_start")
+        upper_rate = st.slider("Tasa Mensual (%)", -5.0, 5.0, 1.0, 0.1, key="upper_rate", format="%.1f%%")
     with col2:
-        cotizacion_date = st.date_input("Fecha de Cotización", datetime.date.today(), key=f"cotizacion_date{suffix}")
-        finish_price = st.number_input("Precio Finish", value=defaults['finish_price'], format="%.2f", key=f"finish_price{suffix}")
-        banda_superior_finish = st.number_input("Banda Superior Finish", value=defaults['bs_finish'], format="%.2f", key=f"bs_finish{suffix}")
-        banda_inferior_finish = st.number_input("Banda Inferior Finish", value=defaults['bi_finish'], format="%.2f", key=f"bi_finish{suffix}")
-    
-    expiry_date = st.date_input("Fecha de Vencimiento", datetime.date.today() + datetime.timedelta(days=defaults['days_to_expiry']), key=f"expiry_date{suffix}")
-    
-    # Retornar todos los valores en un diccionario para fácil acceso
-    return {
-        "ticker": ticker,
-        "inicio_price": inicio_price,
-        "finish_price": finish_price,
-        "cotizacion_date": cotizacion_date,
-        "expiry_date": expiry_date,
-        "banda_superior_inicio": banda_superior_inicio,
-        "banda_superior_finish": banda_superior_finish,
-        "banda_inferior_inicio": banda_inferior_inicio,
-        "banda_inferior_finish": banda_inferior_finish
-    }
+        st.write("📉 **Banda Inferior**")
+        lower_start = st.number_input("Valor Inicial (ARS)", value=1000.0, step=10.0, key="lower_start")
+        lower_rate = st.slider("Tasa Mensual (%)", -5.0, 5.0, -1.0, 0.1, key="lower_rate", format="%.1f%%")
 
-# --- INTERFAZ DE USUARIO (UI) ---
+# --- CUERPO PRINCIPAL DE LA APLICACIÓN ---
+st.title("Simulador de Carry Trade USD/ARS 🇦🇷")
+st.markdown(
+    """
+    Esta herramienta interactiva calcula y visualiza los **precios de breakeven (equilibrio)** para operaciones de *carry trade* con bonos y letras argentinas.
+    Compara estos puntos contra un **corredor de tipo de cambio (crawling peg)** que puedes configurar en la barra lateral.
+    """
+)
 
-st.title("💹 Calculadora de Escenarios de Carry Trade")
-st.markdown("Una herramienta visual para analizar los posibles rendimientos de operaciones de carry trade, comparando diferentes escenarios de precios de entrada y salida.")
+# --- LÓGICA PRINCIPAL ---
+with st.spinner('Cargando datos de mercado y calculando...'):
+    df_mercado = load_data()
 
-# --- PANEL LATERAL CON INPUTS ---
-with st.sidebar:
-    st.header("⚙️ Parámetros de Entrada")
-    
-    # Valores por defecto para cada instrumento
-    defaults1 = {
-        'ticker': 'S30S5', 'inicio_price': 135.45, 'finish_price': 158.98,
-        'bs_inicio': 1400.00, 'bi_inicio': 1000.00, 'bs_finish': 1477.47,
-        'bi_finish': 944.67, 'days_to_expiry': 60
-    }
-    defaults2 = {
-        'ticker': 'TTD26', 'inicio_price': 94.00, 'finish_price': 161.14,
-        'bs_inicio': 1400.00, 'bi_inicio': 1000.00, 'bs_finish': 1694.47,
-        'bi_finish': 789.67, 'days_to_expiry': 180
-    }
+    if df_mercado is not None:
+        # 1. Obtener MEP
+        mep = get_mep_price(use_manual_mep, manual_mep_input)
 
-    # Crear expanders para cada instrumento para una UI más limpia
-    with st.expander("Primer Instrumento", expanded=True):
-        params1 = display_instrument_inputs(1, defaults1)
+        # 2. Calcular Breakevens
+        tickers_list = list(TICKERS_DATA.keys())
+        df_carry = (
+            df_mercado[df_mercado.symbol.isin(tickers_list)]
+              .set_index('symbol')
+              .assign(
+                  payoff=lambda d: d.index.map({k: v['payoff'] for k, v in TICKERS_DATA.items()}),
+                  expiration=lambda d: d.index.map({k: v['venc'] for k, v in TICKERS_DATA.items()}),
+                  BE=lambda d: mep * (d.payoff / d.c)
+              )
+              .sort_values('expiration')
+        )
 
-    with st.expander("Segundo Instrumento"):
-        params2 = display_instrument_inputs(2, defaults2)
+        # 3. Calcular Bandas de Crawling Peg
+        start_band = date.today()
+        all_dates = sorted(df_carry['expiration'].tolist() + [FECHA_ELECCIONES])
+        band_dates = [start_band] + all_dates
+        
+        months_off = [(d - start_band).days / 30.44 for d in band_dates]
+        upper_band_values = [upper_start * (1 + upper_rate / 100)**m for m in months_off]
+        lower_band_values = [lower_start * (1 + lower_rate / 100)**m for m in months_off]
 
-# --- ÁREA PRINCIPAL CON RESULTADOS ---
+        # 4. Mostrar Gráfico
+        st.header("📊 Gráfico Interactivo de Breakevens")
+        interactive_chart = create_interactive_chart(df_carry, upper_band_values, lower_band_values, band_dates)
+        st.plotly_chart(interactive_chart, use_container_width=True)
 
-# Crear pestañas para mostrar los resultados de cada instrumento
-tab1, tab2 = st.tabs([f"📊 {params1['ticker']}", f"📊 {params2['ticker']}"])
+        # 5. Mostrar Tabla de Datos
+        st.header("📄 Tabla de Datos Resumen")
+        table = df_carry.reset_index()[['symbol', 'expiration', 'BE']].copy()
+        table.columns = ['Activo', 'Vencimiento', 'Breakeven (ARS/USD)']
+        table['Días restantes'] = table['Vencimiento'].apply(lambda d: (d - date.today()).days)
+        
+        st.dataframe(
+            table.style.format({
+                'Vencimiento': "{:%d-%m-%Y}",
+                'Breakeven (ARS/USD)': "{:,.2f}"
+            }),
+            use_container_width=True
+        )
 
-# Procesar y mostrar resultados para el Instrumento 1
-with tab1:
-    st.header(f"Análisis para {params1['ticker']}")
-    
-    # Calcular días al vencimiento
-    days_to_expiry1 = (params1['expiry_date'] - params1['cotizacion_date']).days
-    
-    # Mostrar métricas clave en columnas
-    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-    m_col1.metric("Precio Inicio", f"${params1['inicio_price']:.2f}")
-    m_col2.metric("Precio Finish", f"${params1['finish_price']:.2f}")
-    m_col3.metric("Días al Venc.", f"{days_to_expiry1} días")
-    tna_estimada = (((params1['finish_price'] / params1['inicio_price']) - 1) * (365 / days_to_expiry1) * 100) if days_to_expiry1 > 0 else 0
-    m_col4.metric("TNA Estimada", f"{tna_estimada:.2%}")
-
-    # Mostrar tabla de resultados
-    st.subheader("Matriz de Retornos (%)")
-    results_df1 = calculate_carry_trade_table(
-        params1['banda_superior_inicio'], params1['banda_superior_finish'],
-        params1['banda_inferior_inicio'], params1['banda_inferior_finish']
-    )
-    st.dataframe(results_df1.style.applymap(color_gradient_style).format("{:.2f}%"), use_container_width=True)
-    st.caption("La tabla muestra el retorno porcentual. Eje vertical (filas): Precio de venta inicial. Eje horizontal (columnas): Precio de compra final.")
-
-# Procesar y mostrar resultados para el Instrumento 2
-with tab2:
-    st.header(f"Análisis para {params2['ticker']}")
-    
-    days_to_expiry2 = (params2['expiry_date'] - params2['cotizacion_date']).days
-    
-    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-    m_col1.metric("Precio Inicio", f"${params2['inicio_price']:.2f}")
-    m_col2.metric("Precio Finish", f"${params2['finish_price']:.2f}")
-    m_col3.metric("Días al Venc.", f"{days_to_expiry2} días")
-    tna_estimada2 = (((params2['finish_price'] / params2['inicio_price']) - 1) * (365 / days_to_expiry2) * 100) if days_to_expiry2 > 0 else 0
-    m_col4.metric("TNA Estimada", f"{tna_estimada2:.2%}")
-
-    st.subheader("Matriz de Retornos (%)")
-    results_df2 = calculate_carry_trade_table(
-        params2['banda_superior_inicio'], params2['banda_superior_finish'],
-        params2['banda_inferior_inicio'], params2['banda_inferior_finish']
-    )
-    st.dataframe(results_df2.style.applymap(color_gradient_style).format("{:.2f}%"), use_container_width=True)
-    st.caption("La tabla muestra el retorno porcentual. Eje vertical (filas): Precio de venta inicial. Eje horizontal (columnas): Precio de compra final.")
-
-# --- SECCIÓN DE AYUDA ---
-with st.expander("ℹ️ Cómo utilizar esta calculadora"):
-    st.markdown("""
-    1.  **Configure los Parámetros:** En el panel lateral, ajuste los valores para cada instrumento financiero que desee analizar. Puede expandir o contraer la sección de cada uno.
-    2.  **Analice las Métricas:** Las tarjetas en la parte superior de cada pestaña resumen los datos más importantes, incluyendo una TNA estimada.
-    3.  **Explore la Matriz de Retornos:**
-        * La tabla principal muestra los retornos porcentuales para una gama de escenarios.
-        * Los colores indican la rentabilidad: **verde** para ganancias y **rojo** para pérdidas, con intensidades variables.
-        * **Eje Vertical:** Corresponde a los posibles precios a los que usted *vende* dólares al inicio de la operación.
-        * **Eje Horizontal:** Corresponde a los posibles precios a los que usted *compra* dólares al final de la operación.
-    4.  **Compare Instrumentos:** Navegue entre las pestañas para comparar fácilmente los resultados de los dos instrumentos configurados.
-    """)
-
+        st.info(
+            """
+            - **Breakeven (ARS/USD)**: Es el tipo de cambio Dólar MEP futuro al cual la ganancia en pesos de la inversión es cero. Si el MEP a esa fecha es mayor, se obtiene una ganancia en dólares.
+            - **Bandas de Crawling Peg**: Representan un corredor hipotético del tipo de cambio. Ajusta los parámetros en la barra lateral para simular diferentes escenarios de política cambiaria.
+            """,
+            icon="💡"
+        )
