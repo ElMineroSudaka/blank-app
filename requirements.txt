@@ -2,4 +2,4 @@ streamlit
 pandas
 requests
 matplotlib
-plotly.graph_objects
+plotly
