@@ -102,7 +102,7 @@ def color_gradient_style(val):
     elif val > -5: color = '#fee08b'  # Naranja claro
     elif val > -10: color = '#fdae61'
     elif val > -15: color = '#f46d43'
-e   lse: color = '#d73027'  # Rojo intenso
+    else: color = '#d73027'  # Rojo intenso
     
     return f'background-color: {color}; color: {"black" if val > -5 and val < 5 else "white"};'
 
@@ -231,3 +231,4 @@ with st.expander("ℹ️ Cómo utilizar esta calculadora"):
         * **Eje Horizontal:** Corresponde a los posibles precios a los que usted *compra* dólares al final de la operación.
     4.  **Compare Instrumentos:** Navegue entre las pestañas para comparar fácilmente los resultados de los dos instrumentos configurados.
     """)
+
