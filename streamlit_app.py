@@ -44,7 +44,7 @@ def get_mep_price(use_manual, manual_mep):
         try:
             mep_data = requests.get('https://data912.com/live/mep', timeout=5).json()
             return pd.DataFrame(mep_data)['close'].median()
-        except requests.RequestException:
+        except (requests.RequestException, KeyError):
             st.warning("No se pudo obtener el MEP automático. Usando valor manual.", icon="⚠️")
             return manual_mep
     return manual_mep
@@ -57,8 +57,8 @@ def create_interactive_chart(df_carry, upper_band, lower_band, band_dates):
     fig.add_trace(go.Scatter(
         x=band_dates, y=upper_band,
         mode='lines',
-        line=dict(color='red', width=2, dash='dash'),
-        name='Banda Superior Crawling Peg'
+        line=dict(color='rgba(255, 75, 75, 0.8)', width=2, dash='dash'),
+        name='Banda Superior (Peg +1%/mes)'
     ))
 
     # 2. Banda Inferior con relleno
@@ -66,9 +66,9 @@ def create_interactive_chart(df_carry, upper_band, lower_band, band_dates):
         x=band_dates, y=lower_band,
         fill='tonexty', # Rellena el área hasta la traza anterior
         mode='lines',
-        line=dict(color='green', width=2, dash='dash'),
+        line=dict(color='rgba(50, 205, 50, 0.8)', width=2, dash='dash'),
         fillcolor='rgba(128,128,128,0.2)',
-        name='Banda Inferior Crawling Peg'
+        name='Banda Inferior (Peg -1%/mes)'
     ))
 
     # 3. Breakevens de Carry Trade
@@ -81,6 +81,7 @@ def create_interactive_chart(df_carry, upper_band, lower_band, band_dates):
         marker=dict(size=8, symbol='circle'),
         text=df_carry.index,
         textposition="top center",
+        textfont=dict(color='white', size=10),
         hoverinfo='text',
         hovertext=[
             f"<b>Activo:</b> {row.Index}<br>"
@@ -90,16 +91,24 @@ def create_interactive_chart(df_carry, upper_band, lower_band, band_dates):
         ]
     ))
     
-    # 4. Línea vertical para las elecciones
+    # 4. Línea vertical para las elecciones (CORREGIDO)
     fig.add_vline(
         x=FECHA_ELECCIONES,
         line_width=2,
         line_dash="dot",
-        line_color="yellow",
-        annotation_text="Elecciones 26/10",
-        annotation_position="top right",
-        annotation_font_size=12,
-        annotation_font_color="yellow"
+        line_color="yellow"
+    )
+    # Se añade la anotación por separado para evitar el error
+    fig.add_annotation(
+        x=FECHA_ELECCIONES,
+        y=df_carry['BE'].max() * 0.95, # Posición Y relativa al máximo del gráfico
+        yref="y",
+        text="Elecciones 26/10",
+        showarrow=True,
+        arrowhead=1,
+        ax=20,  # Desplazamiento en X del texto desde la flecha
+        ay=-40, # Desplazamiento en Y del texto desde la flecha
+        font=dict(color="yellow", size=12)
     )
 
     # 5. Estilo y Layout del Gráfico
@@ -127,27 +136,16 @@ with st.sidebar:
         step=1.0,
         disabled=not use_manual_mep
     )
-
-    # Parámetros de las bandas de Crawling Peg
     st.markdown("---")
-    st.subheader("Bandas de Crawling Peg")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write("📈 **Banda Superior**")
-        upper_start = st.number_input("Valor Inicial (ARS)", value=1400.0, step=10.0, key="upper_start")
-        upper_rate = st.slider("Tasa Mensual (%)", -5.0, 5.0, 1.0, 0.1, key="upper_rate", format="%.1f%%")
-    with col2:
-        st.write("📉 **Banda Inferior**")
-        lower_start = st.number_input("Valor Inicial (ARS)", value=1000.0, step=10.0, key="lower_start")
-        lower_rate = st.slider("Tasa Mensual (%)", -5.0, 5.0, -1.0, 0.1, key="lower_rate", format="%.1f%%")
+    st.info("Las bandas de crawling peg son fijas para esta visualización (Sup: +1% mensual, Inf: -1% mensual).")
+
 
 # --- CUERPO PRINCIPAL DE LA APLICACIÓN ---
 st.title("Simulador de Carry Trade USD/ARS 🇦🇷")
 st.markdown(
     """
     Esta herramienta interactiva calcula y visualiza los **precios de breakeven (equilibrio)** para operaciones de *carry trade* con bonos y letras argentinas.
-    Compara estos puntos contra un **corredor de tipo de cambio (crawling peg)** que puedes configurar en la barra lateral.
+    Compara estos puntos contra un **corredor de tipo de cambio (crawling peg)** fijo.
     """
 )
 
@@ -155,55 +153,62 @@ st.markdown(
 with st.spinner('Cargando datos de mercado y calculando...'):
     df_mercado = load_data()
 
-    if df_mercado is not None:
+    if df_mercado is not None and not df_mercado.empty:
         # 1. Obtener MEP
         mep = get_mep_price(use_manual_mep, manual_mep_input)
+        st.sidebar.metric("MEP Utilizado para Cálculo", f"${mep:,.2f}")
 
         # 2. Calcular Breakevens
         tickers_list = list(TICKERS_DATA.keys())
         df_carry = (
-            df_mercado[df_mercado.symbol.isin(tickers_list)]
+            df_mercado[df_mercado.symbol.isin(tickers_list) & df_mercado.c.notna() & (df_mercado.c > 0)]
               .set_index('symbol')
               .assign(
                   payoff=lambda d: d.index.map({k: v['payoff'] for k, v in TICKERS_DATA.items()}),
-                  expiration=lambda d: d.index.map({k: v['venc'] for k, v in TICKERS_DATA.items()}),
+                  expiration=lambda d: pd.to_datetime(d.index.map({k: v['venc'] for k, v in TICKERS_DATA.items()})),
                   BE=lambda d: mep * (d.payoff / d.c)
               )
               .sort_values('expiration')
         )
 
-        # 3. Calcular Bandas de Crawling Peg
-        start_band = date.today()
-        all_dates = sorted(df_carry['expiration'].tolist() + [FECHA_ELECCIONES])
-        band_dates = [start_band] + all_dates
-        
-        months_off = [(d - start_band).days / 30.44 for d in band_dates]
-        upper_band_values = [upper_start * (1 + upper_rate / 100)**m for m in months_off]
-        lower_band_values = [lower_start * (1 + lower_rate / 100)**m for m in months_off]
+        if not df_carry.empty:
+            # 3. Calcular Bandas de Crawling Peg (Valores fijos)
+            start_band = date.today()
+            all_dates = sorted(df_carry['expiration'].dt.date.tolist() + [FECHA_ELECCIONES])
+            band_dates = [start_band] + all_dates
+            
+            months_off = [(d - start_band).days / 30.44 for d in band_dates]
+            # Valores fijos para las bandas
+            upper_band_values = [1400 * (1.01)**m for m in months_off]
+            lower_band_values = [1000 * (0.99)**m for m in months_off]
 
-        # 4. Mostrar Gráfico
-        st.header("📊 Gráfico Interactivo de Breakevens")
-        interactive_chart = create_interactive_chart(df_carry, upper_band_values, lower_band_values, band_dates)
-        st.plotly_chart(interactive_chart, use_container_width=True)
+            # 4. Mostrar Gráfico
+            st.header("📊 Gráfico Interactivo de Breakevens")
+            interactive_chart = create_interactive_chart(df_carry, upper_band_values, lower_band_values, band_dates)
+            st.plotly_chart(interactive_chart, use_container_width=True)
 
-        # 5. Mostrar Tabla de Datos
-        st.header("📄 Tabla de Datos Resumen")
-        table = df_carry.reset_index()[['symbol', 'expiration', 'BE']].copy()
-        table.columns = ['Activo', 'Vencimiento', 'Breakeven (ARS/USD)']
-        table['Días restantes'] = table['Vencimiento'].apply(lambda d: (d - date.today()).days)
-        
-        st.dataframe(
-            table.style.format({
-                'Vencimiento': "{:%d-%m-%Y}",
-                'Breakeven (ARS/USD)': "{:,.2f}"
-            }),
-            use_container_width=True
-        )
+            # 5. Mostrar Tabla de Datos
+            st.header("📄 Tabla de Datos Resumen")
+            table = df_carry.reset_index()[['symbol', 'expiration', 'BE']].copy()
+            table.columns = ['Activo', 'Vencimiento', 'Breakeven (ARS/USD)']
+            table['Días restantes'] = table['Vencimiento'].apply(lambda d: (d.date() - date.today()).days)
+            
+            st.dataframe(
+                table.style.format({
+                    'Vencimiento': "{:%d-%m-%Y}",
+                    'Breakeven (ARS/USD)': "{:,.2f}"
+                }),
+                use_container_width=True
+            )
 
-        st.info(
-            """
-            - **Breakeven (ARS/USD)**: Es el tipo de cambio Dólar MEP futuro al cual la ganancia en pesos de la inversión es cero. Si el MEP a esa fecha es mayor, se obtiene una ganancia en dólares.
-            - **Bandas de Crawling Peg**: Representan un corredor hipotético del tipo de cambio. Ajusta los parámetros en la barra lateral para simular diferentes escenarios de política cambiaria.
-            """,
-            icon="💡"
-        )
+            st.info(
+                """
+                - **Breakeven (ARS/USD)**: Es el tipo de cambio Dólar MEP futuro al cual la ganancia en pesos de la inversión es cero. Si el MEP a esa fecha es mayor, se obtiene una ganancia en dólares.
+                - **Bandas de Crawling Peg**: Representan un corredor hipotético del tipo de cambio con valores fijos.
+                """,
+                icon="💡"
+            )
+        else:
+            st.warning("No se encontraron datos para los activos especificados después de filtrar. No se puede generar el gráfico.")
+    else:
+        st.error("No se pudieron cargar los datos del mercado. Intenta de nuevo más tarde.")
